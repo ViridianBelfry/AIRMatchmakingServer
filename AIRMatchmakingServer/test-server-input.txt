@@ -1,0 +1,3 @@
+curl -X POST https://localhost:7084/matchmaking/join -k \
+ -H "Content-Type: application/json" \
+ -d '{ "playerId": "Player_1", "MMR": 1200 }'

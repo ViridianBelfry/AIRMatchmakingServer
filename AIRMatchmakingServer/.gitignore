@@ -1,0 +1,31 @@
+# Build output
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider/JetBrains
+.idea/
+*.sln.iml
+
+# VS Code
+.vscode/
+
+# dotnet secrets/certs
+*.pfx
+*.key
+*.cer
+
+# OS/Editor files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node/npm
+node_modules/
