@@ -26,13 +26,18 @@ app.Run();
 */
 
 using AIRMatchmakingServer.Services;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddSingleton<MatchmakingService>(); // Register the service
-builder.Services.AddControllers();             // Allow attribute routing
+builder.Services.AddControllers()
+.AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(allowIntegerValues: false));
+});
 
+builder.Services.AddSingleton<MatchmakingService>(); // Register the service
 
 var app = builder.Build();
+
 app.MapControllers();
-// app.MapGet("/", () => "AIRMatchmakingServer is running.");
 app.Run();

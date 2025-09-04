@@ -1,24 +1,36 @@
 using System.Collections.Concurrent;
 using AIRMatchmakingServer.Models;
+using AIRMatchmakingServer.Utils;
 
 namespace AIRMatchmakingServer.Services
 {
     public class MatchmakingService
     {
-        private readonly ConcurrentQueue<PlayerJoinRequest> _queue = new();
+        private readonly Dictionary<LobbySize, ConcurrentQueue<PlayerJoinRequest>> _queues = new()
+        {
+            [LobbySize.Small] = new(),
+            [LobbySize.Medium] = new(),
+            [LobbySize.Large] = new()
+        };
+
+        //private readonly ConcurrentQueue<PlayerJoinRequest> _queue = new();
         private const int MaxPlayersPerMatch = 32;
 
         public bool TryAddPlayer(PlayerJoinRequest player, out List<PlayerJoinRequest>? match)
         {
-            _queue.Enqueue(player);
+            match = null;
+            var queue = _queues[player.LobbySize];
+            queue.Enqueue(player);
 
-            if (_queue.Count >= MaxPlayersPerMatch)
+            int matchSize = LobbySizeUtils.ToPlayerCount(player.LobbySize);
+
+            if (queue.Count >= matchSize)
             {
                 match = new List<PlayerJoinRequest>();
 
                 for (int i = 0; i < MaxPlayersPerMatch; i++)
                 {
-                    if (_queue.TryDequeue(out var p))
+                    if (queue.TryDequeue(out var p))
                         match.Add(p);
                 }
 
