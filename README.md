@@ -85,9 +85,11 @@ Once enough players (e.g. 32) are queued, the server returns:
 ## 📦 Project Structure
 
 ```text
+Constants/            // Constant values for reuse
 Controllers/          // Web API endpoints
 Services/             // Match queue logic
 Models/               // Request/response payloads
+Utils/                // General utility functions
 Program.cs            // Server entry point
 ```
 
