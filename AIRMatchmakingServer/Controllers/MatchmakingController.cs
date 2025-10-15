@@ -10,18 +10,27 @@ namespace AIRMatchmakingServer.Controllers
     public class MatchmakingController : ControllerBase
     {
         private readonly MatchmakingService _matchmakingService;
+        private readonly ILogger<MatchmakingController> _logger;
 
-        public MatchmakingController(MatchmakingService service)
+        public MatchmakingController(MatchmakingService service, ILogger<MatchmakingController> logger)
         {
             _matchmakingService = service;
+            _logger = logger;
         }
 
         [HttpPost("join")]
         public IActionResult JoinQueue([FromBody] PlayerJoinRequest request)
         {
+            var ip = HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? "unknown";
+            _logger.LogInformation("JoinQueue hit: PlayerId={PlayerId}, QueueType={QueueType}, LobbySize={LobbySize}, IP={IP}",
+                request?.PlayerId, request?.QueueType, request?.LobbySize, ip);
+
             var validationError = RequestValidator.ValidateJoinRequest(request);
             if (validationError != null)
+            {
+                _logger.LogWarning("JoinQueue validation failed for PlayerId={PlayerId}: {Result}", request?.PlayerId, validationError.GetType().Name);
                 return validationError;
+            }
 
             if (_matchmakingService.TryAddPlayer(request, out var match))
                 {
@@ -32,6 +41,7 @@ namespace AIRMatchmakingServer.Controllers
                         return BadRequest("Match could not be created.");
 
                     // In future: send all players to gameUrl
+                    _logger.LogInformation("Match found: LobbySize={LobbySize}, Players={Players}", request.LobbySize, string.Join(",", match.Select(p => p.PlayerId)));
                     return Ok(new
                     {
                         message = "Match found!",
@@ -40,15 +50,23 @@ namespace AIRMatchmakingServer.Controllers
                     });
                 }
 
+            _logger.LogInformation("Player queued and waiting: PlayerId={PlayerId}, LobbySize={LobbySize}", request.PlayerId, request.LobbySize);
             return Ok(new { message = "Waiting for match..." });
         }
 
         [HttpPost("dev/botgame")]
         public IActionResult CreateBotMatch([FromBody] PlayerJoinRequest request)
         {
+            var ip = HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? "unknown";
+            _logger.LogInformation("BotGame hit: PlayerId={PlayerId}, QueueType={QueueType}, LobbySize={LobbySize}, IP={IP}",
+                request?.PlayerId, request?.QueueType, request?.LobbySize, ip);
+
             var validationError = RequestValidator.ValidateJoinRequest(request);
             if (validationError != null)
+            {
+                _logger.LogWarning("BotGame validation failed for PlayerId={PlayerId}: {Result}", request?.PlayerId, validationError.GetType().Name);
                 return validationError;
+            }
 
             var matchSize = LobbySizeUtils.ToPlayerCount(request.LobbySize);
             var match = new List<PlayerJoinRequest>
@@ -76,6 +94,7 @@ namespace AIRMatchmakingServer.Controllers
             if (match == null)
                 return BadRequest("Match could not be created.");
 
+            _logger.LogInformation("Dev bot match created: LobbySize={LobbySize}, Players={Players}", request.LobbySize, string.Join(",", match.Select(p => p.PlayerId)));
             return Ok(new
             {
                 message = "Dev match with bots created.",

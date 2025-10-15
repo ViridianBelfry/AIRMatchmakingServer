@@ -29,6 +29,9 @@ using AIRMatchmakingServer.Services;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+// Configure simple console logging
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
 builder.Services.AddControllers()
 .AddJsonOptions(options =>
 {
