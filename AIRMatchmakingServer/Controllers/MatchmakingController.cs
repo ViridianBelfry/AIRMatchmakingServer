@@ -102,5 +102,36 @@ namespace AIRMatchmakingServer.Controllers
                 players = match.Select(p => p.PlayerId).ToList()
             });
         }
+
+        [HttpGet("dev/state")]
+        public IActionResult GetState()
+        {
+            var snapshot = _matchmakingService.GetQueueSnapshot();
+
+            var response = new
+            {
+                generatedAtUtc = DateTime.UtcNow,
+                queues = snapshot.ToDictionary(
+                    kvp => kvp.Key.ToString(),
+                    kvp => new
+                    {
+                        count = kvp.Value.Count,
+                        players = kvp.Value.Select(p => new
+                        {
+                            p.PlayerId,
+                            p.MMR,
+                            p.QueueType,
+                            p.LobbySize
+                        }).ToList()
+                    })
+            };
+
+            _logger.LogInformation("Dev state requested. Totals: Small={Small}, Medium={Medium}, Large={Large}",
+                response.queues.TryGetValue("Small", out var small) ? small.count : 0,
+                response.queues.TryGetValue("Medium", out var medium) ? medium.count : 0,
+                response.queues.TryGetValue("Large", out var large) ? large.count : 0);
+
+            return Ok(response);
+        }
     }
 }

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using AIRMatchmakingServer.Models;
 using AIRMatchmakingServer.Utils;
+using System.Linq;
 
 namespace AIRMatchmakingServer.Services
 {
@@ -39,6 +40,15 @@ namespace AIRMatchmakingServer.Services
 
             match = null;
             return false; // keep waiting
+        }
+
+        public Dictionary<LobbySize, List<PlayerJoinRequest>> GetQueueSnapshot()
+        {
+            // Safe snapshot of current queues for diagnostics
+            return _queues.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value.ToArray().ToList()
+            );
         }
     }
 }
