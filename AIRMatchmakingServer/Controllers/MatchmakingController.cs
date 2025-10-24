@@ -32,7 +32,52 @@ namespace AIRMatchmakingServer.Controllers
                 return validationError;
             }
 
-            if (_matchmakingService.TryAddPlayer(request, out var match))
+            // If the caller requested a bot-filled lobby or explicit bot count, create an immediate match
+            if (request.BotFill || (request.BotCount.HasValue && request.BotCount.Value > 0))
+            {
+                var matchSize = LobbySizeUtils.ToPlayerCount(request.LobbySize);
+                var botsToAdd = request.BotFill
+                    ? Math.Max(0, matchSize - 1)
+                    : Math.Min(Math.Max(0, request.BotCount ?? 0), Math.Max(0, matchSize - 1));
+
+                var matchImmediate = new List<PlayerJoinRequest>
+                {
+                    new PlayerJoinRequest
+                    {
+                        PlayerId = request.PlayerId,
+                        MMR = request.MMR,
+                        LobbySize = request.LobbySize,
+                        QueueType = request.QueueType,
+                        BotFill = request.BotFill,
+                        BotCount = request.BotCount
+                    }
+                };
+
+                for (int i = 0; i < botsToAdd; i++)
+                {
+                    matchImmediate.Add(new PlayerJoinRequest
+                    {
+                        PlayerId = $"BOT_{Guid.NewGuid().ToString().Substring(0, 5)}",
+                        MMR = request.MMR,
+                        LobbySize = request.LobbySize,
+                        QueueType = request.QueueType
+                    });
+                }
+
+                var gameUrlImmediate = $"https://game-instance-{Guid.NewGuid().ToString().Substring(0, 8)}.alpha.com";
+                _logger.LogInformation("Immediate bot match: LobbySize={LobbySize}, Human={PlayerId}, Bots={BotCount}", request.LobbySize, request.PlayerId, botsToAdd);
+                return Ok(new
+                {
+                    message = "Match created with bots.",
+                    gameUrl = gameUrlImmediate,
+                    players = matchImmediate.Select(p => p.PlayerId).ToList(),
+                    botCount = botsToAdd,
+                    ticketId = (string?)null,
+                    ttlSeconds = _matchmakingService.GetTtlSeconds()
+                });
+            }
+
+            if (_matchmakingService.TryAddPlayer(request, out var match, out var ticketId))
                 {
                     // Simulate spawning a game server and returning its URL
                     var gameUrl = $"https://game-instance-{Guid.NewGuid().ToString().Substring(0, 8)}.alpha.com";
@@ -46,12 +91,14 @@ namespace AIRMatchmakingServer.Controllers
                     {
                         message = "Match found!",
                         gameUrl,
-                        players = match.Select(p => p.PlayerId).ToList()
+                        players = match.Select(p => p.PlayerId).ToList(),
+                        ticketId,
+                        ttlSeconds = _matchmakingService.GetTtlSeconds()
                     });
                 }
 
             _logger.LogInformation("Player queued and waiting: PlayerId={PlayerId}, LobbySize={LobbySize}", request.PlayerId, request.LobbySize);
-            return Ok(new { message = "Waiting for match..." });
+            return Ok(new { message = "Waiting for match...", ticketId, ttlSeconds = _matchmakingService.GetTtlSeconds() });
         }
 
         [HttpPost("dev/botgame")]
@@ -69,23 +116,31 @@ namespace AIRMatchmakingServer.Controllers
             }
 
             var matchSize = LobbySizeUtils.ToPlayerCount(request.LobbySize);
+            var requestedBots = request.BotFill
+                ? Math.Max(0, matchSize - 1)
+                : Math.Min(Math.Max(0, request.BotCount ?? (matchSize - 1)), Math.Max(0, matchSize - 1));
+
             var match = new List<PlayerJoinRequest>
             {
                 new PlayerJoinRequest
                 {
                     PlayerId = request.PlayerId,
                     MMR = request.MMR,
-                    LobbySize = request.LobbySize
+                    LobbySize = request.LobbySize,
+                    QueueType = request.QueueType,
+                    BotFill = request.BotFill,
+                    BotCount = request.BotCount
                 }
             };
 
-            for (int i = 1; i < matchSize; i++)
+            for (int i = 0; i < requestedBots; i++)
             {
                 match.Add(new PlayerJoinRequest
                 {
                     PlayerId = $"BOT_{Guid.NewGuid().ToString().Substring(0, 5)}",
                     MMR = request.MMR,
-                    LobbySize = request.LobbySize
+                    LobbySize = request.LobbySize,
+                    QueueType = request.QueueType
                 });
             }
 
@@ -99,8 +154,30 @@ namespace AIRMatchmakingServer.Controllers
             {
                 message = "Dev match with bots created.",
                 gameUrl,
-                players = match.Select(p => p.PlayerId).ToList()
+                players = match.Select(p => p.PlayerId).ToList(),
+                botCount = requestedBots
             });
+        }
+
+        public class TicketRequest { public string TicketId { get; set; } = string.Empty; }
+
+        [HttpPost("heartbeat")]
+        public IActionResult Heartbeat([FromBody] TicketRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.TicketId)) return BadRequest("ticketId required");
+            var ok = _matchmakingService.Heartbeat(req.TicketId);
+            if (!ok) return NotFound(new { message = "ticket not found or inactive" });
+            return Ok(new { message = "heartbeat ok" });
+        }
+
+        [HttpPost("leave")]
+        public IActionResult Leave([FromBody] TicketRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.TicketId)) return BadRequest("ticketId required");
+            var ok = _matchmakingService.Leave(req.TicketId);
+            if (!ok) return NotFound(new { message = "ticket not found" });
+            _logger.LogInformation("Player left queue: TicketId={TicketId}", req.TicketId);
+            return Ok(new { message = "left queue" });
         }
 
         [HttpGet("dev/state")]
@@ -121,7 +198,13 @@ namespace AIRMatchmakingServer.Controllers
                             p.PlayerId,
                             p.MMR,
                             p.QueueType,
-                            p.LobbySize
+                            p.LobbySize,
+                            p.BotFill,
+                            p.BotCount,
+                            p.TicketId,
+                            p.Status,
+                            p.EnqueuedAtUtc,
+                            p.LastSeenAtUtc
                         }).ToList()
                     })
             };

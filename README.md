@@ -113,3 +113,36 @@ request.certificateHandler = new BypassCertificate(); // Only for dev
 - Matchmaking by MMR tiers
 - Redis or SQL match tracking
 - Authentication / player tokens
+
+---
+
+## 🤖 Bot-Filled Matches
+
+The join request supports two optional fields to request bots:
+
+- `botFill` (bool): if true, immediately creates a solo match filled with bots up to lobby capacity.
+- `botCount` (int): explicit number of bots to add (0..capacity-1). If provided and > 0, it takes precedence over `botFill`.
+
+Notes:
+- Do not set both `botFill` and a positive `botCount` — the API will reject the request.
+- Capacity depends on `lobbySize` (Small=8, Medium=32, Large=100).
+
+Examples
+
+- Solo vs bots (fill lobby):
+
+```bash
+curl -X POST https://localhost:7084/matchmaking/join -k \
+  -H "Content-Type: application/json" \
+  -d '{ "playerId": "Player1", "queueType": "Casual", "lobbySize": "Small", "botFill": true }'
+```
+
+- Solo with N bots:
+
+```bash
+curl -X POST https://localhost:7084/matchmaking/join -k \
+  -H "Content-Type: application/json" \
+  -d '{ "playerId": "Player1", "queueType": "Casual", "lobbySize": "Small", "botCount": 3 }'
+```
+
+Response includes the generated `gameUrl`, the `players` list (with synthetic `BOT_XXXXX` IDs), and `botCount` when bots are used.
