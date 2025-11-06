@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using AIRMatchmakingServer.Models;
 
 namespace AIRMatchmakingServer.Utils
 {
@@ -7,6 +6,16 @@ namespace AIRMatchmakingServer.Utils
     {
         public static IActionResult? ValidateJoinRequest(PlayerJoinRequest request)
         {
+            if (request == null)
+            {
+                return new BadRequestObjectResult("Request body is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.PlayerId))
+            {
+                return new BadRequestObjectResult("playerId is required.");
+            }
+
             var sizeError = ValidateLobbySize(request.LobbySize);
             if (sizeError != null) return sizeError;
 

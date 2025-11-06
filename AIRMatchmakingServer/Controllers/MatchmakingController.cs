@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using AIRMatchmakingServer.Models;
 using AIRMatchmakingServer.Services;
 using AIRMatchmakingServer.Utils;
 
@@ -19,8 +18,11 @@ namespace AIRMatchmakingServer.Controllers
         }
 
         [HttpPost("join")]
-        public IActionResult JoinQueue([FromBody] PlayerJoinRequest request)
+        public IActionResult JoinQueue([FromBody] string mode, int mmr)
+        // public IActionResult JoinQueue([FromBody] PlayerJoinRequest request)
         {
+            return Ok();
+            /*
             var ip = HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? "unknown";
             _logger.LogInformation("JoinQueue hit: PlayerId={PlayerId}, QueueType={QueueType}, LobbySize={LobbySize}, IP={IP}",
                 request?.PlayerId, request?.QueueType, request?.LobbySize, ip);
@@ -99,6 +101,7 @@ namespace AIRMatchmakingServer.Controllers
 
             _logger.LogInformation("Player queued and waiting: PlayerId={PlayerId}, LobbySize={LobbySize}", request.PlayerId, request.LobbySize);
             return Ok(new { message = "Waiting for match...", ticketId, ttlSeconds = _matchmakingService.GetTtlSeconds() });
+            */
         }
 
         [HttpPost("dev/botgame")]
@@ -166,8 +169,7 @@ namespace AIRMatchmakingServer.Controllers
         {
             if (string.IsNullOrWhiteSpace(req.TicketId)) return BadRequest("ticketId required");
             var ok = _matchmakingService.Heartbeat(req.TicketId);
-            if (!ok) return NotFound(new { message = "ticket not found or inactive" });
-            return Ok(new { message = "heartbeat ok" });
+            return Ok(ok);
         }
 
         [HttpPost("leave")]

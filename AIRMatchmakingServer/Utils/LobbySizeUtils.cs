@@ -1,4 +1,3 @@
-using AIRMatchmakingServer.Models;
 using AIRMatchmakingServer.Constants;
 
 namespace AIRMatchmakingServer.Utils

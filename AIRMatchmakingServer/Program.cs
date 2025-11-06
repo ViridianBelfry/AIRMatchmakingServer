@@ -25,6 +25,10 @@ app.MapControllers();
 app.Run();
 */
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR.Protocol;
+using Microsoft.Extensions.DependencyInjection;
 using AIRMatchmakingServer.Services;
 using AIRMatchmakingServer.Hubs;
 using System.Text.Json.Serialization;
@@ -43,11 +47,14 @@ builder.Services.AddControllers()
 builder.Services.Configure<MatchmakingOptions>(builder.Configuration.GetSection("Matchmaking"));
 builder.Services.AddSingleton<MatchmakingService>(); // Register the service
 builder.Services.AddSingleton<ConnectionRegistry>();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR((o) =>
+{
+    o.EnableDetailedErrors = true;
+});
 builder.Services.AddHostedService<MatchmakingSweeper>();
 
 var app = builder.Build();
 
 app.MapControllers();
-app.MapHub<MatchmakingHub>("/hubs/matchmaking");
+app.MapHub<MatchmakingHub>("/Matchmaking");
 app.Run();

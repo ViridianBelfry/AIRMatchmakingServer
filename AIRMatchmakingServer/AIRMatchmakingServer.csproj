@@ -8,6 +8,23 @@
 
   <ItemGroup>
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.2.3" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.Json" Version="6.0.0" />
+  </ItemGroup>
+
+  <!-- Compile-time reference to any DLLs placed under Plugins/ -->
+  <ItemGroup>
+    <PluginDll Include="Plugins\**\*.dll" />
+    <PluginXml Include="Plugins\**\*.xml" />
+    <PluginPdb Include="Plugins\**\*.pdb" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="AIRBattleSimulation">
+      <HintPath>Plugins\AIRBattleSimulation.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <!-- Ensure these files live in the same folder as the DLL -->
+    <None Include="Plugins\AIRBattleSimulation.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Plugins\AIRBattleSimulation.pdb" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

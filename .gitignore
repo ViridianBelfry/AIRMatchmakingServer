@@ -29,3 +29,6 @@ Thumbs.db
 
 # Node/npm
 node_modules/
+ 
+# Plugins (ignored) - Copy required DLLs prior to build
+AIRMatchmakingServer/Plugins/*

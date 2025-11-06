@@ -59,7 +59,7 @@ You can use curl or Postman to hit the matchmaking endpoint:
 ```bash
 curl -X POST https://localhost:7084/matchmaking/join -k \
   -H "Content-Type: application/json" \
-  -d '{ "playerId": "Player_1234", "MMR": 1200 }'
+  -d '{ "PlayerId": "Player_1234", "MMR": 1200 }'
 ```
 
 Expected response:
@@ -88,7 +88,7 @@ Once enough players (e.g. 32) are queued, the server returns:
 Constants/            // Constant values for reuse
 Controllers/          // Web API endpoints
 Services/             // Match queue logic
-Models/               // Request/response payloads
+Plugins/              // BattleSim Library with Request/Response payloads
 Utils/                // General utility functions
 Program.cs            // Server entry point
 ```
@@ -134,7 +134,7 @@ Examples
 ```bash
 curl -X POST https://localhost:7084/matchmaking/join -k \
   -H "Content-Type: application/json" \
-  -d '{ "playerId": "Player1", "queueType": "Casual", "lobbySize": "Small", "botFill": true }'
+  -d '{ "PlayerId": "Player1", "QueueType": "Casual", "LobbySize": "Small", "BotFill": true }'
 ```
 
 - Solo with N bots:
@@ -142,7 +142,7 @@ curl -X POST https://localhost:7084/matchmaking/join -k \
 ```bash
 curl -X POST https://localhost:7084/matchmaking/join -k \
   -H "Content-Type: application/json" \
-  -d '{ "playerId": "Player1", "queueType": "Casual", "lobbySize": "Small", "botCount": 3 }'
+  -d '{ "PlayerId": "Player1", "QueueType": "Casual", "LobbySize": "Small", "BotCount": 3 }'
 ```
 
 Response includes the generated `gameUrl`, the `players` list (with synthetic `BOT_XXXXX` IDs), and `botCount` when bots are used.

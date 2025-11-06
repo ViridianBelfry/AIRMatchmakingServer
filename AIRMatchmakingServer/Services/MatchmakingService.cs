@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
-using AIRMatchmakingServer.Models;
 using AIRMatchmakingServer.Utils;
 using System.Linq;
 using AIRMatchmakingServer.Options;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using AIR.Shared.Contracts.Matchmaking;
 
 namespace AIRMatchmakingServer.Services
 {

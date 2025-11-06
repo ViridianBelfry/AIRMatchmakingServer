@@ -1,4 +1,4 @@
-using AIRMatchmakingServer.Models;
+
 using AIRMatchmakingServer.Services;
 using AIRMatchmakingServer.Utils;
 using Microsoft.AspNetCore.SignalR;
@@ -37,15 +37,24 @@ namespace AIRMatchmakingServer.Hubs
         public Task Identify(string playerId)
         {
             if (string.IsNullOrWhiteSpace(playerId))
-                throw new HubException("playerId is required");
+                throw new HubException("PlayerId is required");
 
             _connections.BindConnection(playerId, Context.ConnectionId);
             _logger.LogInformation("Identify: PlayerId={PlayerId} ConnId={ConnId}", playerId, Context.ConnectionId);
             return Task.CompletedTask;
         }
 
+        public async Task JoinQueue(string mode, int mmr)
+        {
+            Console.WriteLine($"JoinQueue start: {mode} {mmr}");
+            await Task.Delay(1000);
+            // return Task.CompletedTask;
+        }
+
+        /*
         public async Task JoinQueue(PlayerJoinRequest request)
         {
+            _logger.LogWarning($"JoinQueue has been entered with request: {request}");
             var ip = Context?.GetHttpContext()?.Connection?.RemoteIpAddress?.ToString() ?? "unknown";
             _logger.LogInformation("Hub JoinQueue: PlayerId={PlayerId}, QueueType={QueueType}, LobbySize={LobbySize}, IP={IP}",
                 request?.PlayerId, request?.QueueType, request?.LobbySize, ip);
@@ -132,6 +141,7 @@ namespace AIRMatchmakingServer.Hubs
                 _logger.LogInformation("Hub player queued and waiting: PlayerId={PlayerId}, LobbySize={LobbySize}", request.PlayerId, request.LobbySize);
             }
         }
+        */
 
         public Task<bool> Heartbeat(string ticketId)
         {
