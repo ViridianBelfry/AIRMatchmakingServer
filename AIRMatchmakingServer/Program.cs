@@ -25,25 +25,15 @@ app.MapControllers();
 app.Run();
 */
 
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.AspNetCore.SignalR.Protocol;
-using Microsoft.Extensions.DependencyInjection;
 using AIRMatchmakingServer.Services;
 using AIRMatchmakingServer.Hubs;
-using System.Text.Json.Serialization;
 using AIRMatchmakingServer.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 // Configure simple console logging
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
-builder.Services.AddControllers()
-.AddJsonOptions(options =>
-{
-    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(allowIntegerValues: false));
-});
-
 builder.Services.Configure<MatchmakingOptions>(builder.Configuration.GetSection("Matchmaking"));
 builder.Services.AddSingleton<MatchmakingService>(); // Register the service
 builder.Services.AddSingleton<ConnectionRegistry>();
@@ -55,6 +45,5 @@ builder.Services.AddHostedService<MatchmakingSweeper>();
 
 var app = builder.Build();
 
-app.MapControllers();
 app.MapHub<MatchmakingHub>("/Matchmaking");
 app.Run();

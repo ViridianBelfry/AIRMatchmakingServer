@@ -29,12 +29,9 @@ namespace AIRMatchmakingServer.Services
             _logger = logger;
         }
 
-        public bool TryAddPlayer(PlayerJoinRequest player, out List<PlayerJoinRequest>? match)
-            => TryAddPlayer(player, out match, out _);
-
-        public bool TryAddPlayer(PlayerJoinRequest player, out List<PlayerJoinRequest>? match, out string ticketId)
+        public PlayerJoinResponse EnqueuePlayer(PlayerJoinRequest player, out List<QueueEntry>? readyEntries)
         {
-            match = null;
+            readyEntries = null;
 
             var entry = new QueueEntry
             {
@@ -46,12 +43,14 @@ namespace AIRMatchmakingServer.Services
                 BotCount = player.BotCount
             };
 
+            entry.LastSeenAtUtc = DateTime.UtcNow;
+
             _tickets[entry.TicketId] = entry;
 
             var queue = _queues[entry.LobbySize];
             queue.Enqueue(entry);
 
-            ticketId = entry.TicketId;
+            var response = BuildJoinResponse(entry);
 
             int matchSize = LobbySizeUtils.ToPlayerCount(entry.LobbySize);
 
@@ -73,12 +72,12 @@ namespace AIRMatchmakingServer.Services
 
                 if (candidates.Count == matchSize)
                 {
-                    match = candidates.Select(c => c.ToRequest()).ToList();
+                    readyEntries = candidates;
                     foreach (var c in candidates)
                     {
                         _tickets.TryRemove(c.TicketId, out _);
                     }
-                    return true; // match ready
+                    return response;
                 }
                 else
                 {
@@ -90,8 +89,56 @@ namespace AIRMatchmakingServer.Services
                 }
             }
 
-            match = null;
-            return false; // keep waiting
+            return response;
+        }
+
+        private PlayerJoinResponse BuildJoinResponse(QueueEntry entry)
+        {
+            return new PlayerJoinResponse
+            {
+                TicketId = entry.TicketId,
+                QueueState = BuildQueueStateSnapshot(entry),
+                Lease = IssueLease()
+            };
+        }
+
+        private QueueLease IssueLease()
+        {
+            var issued = DateTime.UtcNow;
+            var expires = issued + _heartbeatTtl;
+            var heartbeatIntervalSeconds = Math.Max(1, (int)Math.Round(_heartbeatTtl.TotalSeconds * 0.5));
+            var graceSeconds = Math.Max(1, (int)Math.Round(_heartbeatTtl.TotalSeconds * 0.25));
+            return new QueueLease(issued, expires, heartbeatIntervalSeconds, graceSeconds);
+        }
+
+        private QueueStateSnapshot BuildQueueStateSnapshot(QueueEntry entry)
+        {
+            var queue = _queues[entry.LobbySize];
+            var snapshotEntries = queue.ToArray();
+            var matchSize = Math.Max(1, LobbySizeUtils.ToPlayerCount(entry.LobbySize));
+            var expectedGroups = Math.Max(0, (int)Math.Ceiling(snapshotEntries.Length / (double)matchSize));
+            var expectedWaitSeconds = expectedGroups == 0
+                ? 0
+                : (int)Math.Ceiling(expectedGroups * _heartbeatTtl.TotalSeconds);
+
+            var mmrValues = snapshotEntries
+                .Where(e => !string.Equals(e.TicketId, entry.TicketId, StringComparison.Ordinal))
+                .Select(e => e.MMR)
+                .Where(m => m > 0)
+                .ToList();
+
+            var averageMmr = mmrValues.Count > 0
+                ? (int)Math.Round(mmrValues.Average())
+                : entry.MMR;
+
+            return new QueueStateSnapshot
+            {
+                QueueType = entry.QueueType,
+                LobbyTargetSize = entry.LobbySize,
+                ExpectedWaitSeconds = expectedWaitSeconds,
+                ActiveTickets = snapshotEntries.Length,
+                AverageOpponentMmr = averageMmr
+            };
         }
 
         private bool IsEntryActive(QueueEntry e)
@@ -105,28 +152,100 @@ namespace AIRMatchmakingServer.Services
             return true;
         }
 
-        public bool Heartbeat(string ticketId)
+        public HeartbeatAck? Heartbeat(HeartbeatPing? ping)
         {
-            if (_tickets.TryGetValue(ticketId, out var entry))
+            if (ping == null || string.IsNullOrWhiteSpace(ping.TicketId))
             {
-                if (entry.Status == QueueStatus.Queued)
-                {
-                    entry.LastSeenAtUtc = DateTime.UtcNow;
-                    return true;
-                }
+                _logger?.LogWarning("Heartbeat rejected: missing payload or ticket id.");
+                return null;
             }
-            return false;
+
+            if (_tickets.TryGetValue(ping.TicketId, out var entry) && entry.Status == QueueStatus.Queued)
+            {
+                entry.LastSeenAtUtc = DateTime.UtcNow;
+                var ack = new HeartbeatAck
+                {
+                    TicketId = entry.TicketId,
+                    ServerTimestampUtc = DateTime.UtcNow,
+                    Lease = IssueLease()
+                };
+
+                _logger?.LogInformation("Heartbeat received: TicketId={TicketId}", ping.TicketId);
+                return ack;
+            }
+
+            _logger?.LogWarning("Heartbeat rejected: TicketId={TicketId} not active.", ping.TicketId);
+            return null;
         }
 
-        public bool Leave(string ticketId)
+        public LeaveQueueResult Leave(LeaveQueueRequest? request)
         {
-            if (_tickets.TryGetValue(ticketId, out var entry))
+            if (request == null || string.IsNullOrWhiteSpace(request.TicketId))
             {
-                entry.Status = QueueStatus.Cancelled;
-                // Leave it in queue; it will be skipped when dequeued.
-                return true;
+                return new LeaveQueueResult
+                {
+                    Success = false,
+                    FailureReason = LeaveQueueFailureReason.TicketNotFound,
+                    Message = "ticketId is required."
+                };
             }
-            return false;
+
+            if (!_tickets.TryGetValue(request.TicketId, out var entry))
+            {
+                return new LeaveQueueResult
+                {
+                    Success = false,
+                    FailureReason = LeaveQueueFailureReason.TicketNotFound,
+                    Message = "Ticket not found."
+                };
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.PlayerId) &&
+                !string.Equals(request.PlayerId, entry.PlayerId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new LeaveQueueResult
+                {
+                    Success = false,
+                    FailureReason = LeaveQueueFailureReason.Unknown,
+                    Message = "PlayerId does not match the ticket owner."
+                };
+            }
+
+            switch (entry.Status)
+            {
+                case QueueStatus.Queued:
+                    entry.Status = QueueStatus.Cancelled;
+                    return new LeaveQueueResult
+                    {
+                        Success = true,
+                        FailureReason = LeaveQueueFailureReason.None,
+                        Message = "Removed from queue."
+                    };
+
+                case QueueStatus.Cancelled:
+                    return new LeaveQueueResult
+                    {
+                        Success = false,
+                        FailureReason = LeaveQueueFailureReason.Unknown,
+                        Message = "Ticket already cancelled."
+                    };
+
+                case QueueStatus.Expired:
+                    return new LeaveQueueResult
+                    {
+                        Success = false,
+                        FailureReason = LeaveQueueFailureReason.LeaseExpired,
+                        Message = "Ticket expired before leave request was processed."
+                    };
+
+                default:
+                    return new LeaveQueueResult
+                    {
+                        Success = false,
+                        FailureReason = LeaveQueueFailureReason.Unknown,
+                        Message = $"Ticket is in unexpected state: {entry.Status}."
+                    };
+            }
         }
 
         public Dictionary<LobbySize, List<QueueEntry>> GetQueueSnapshot()
@@ -138,7 +257,7 @@ namespace AIRMatchmakingServer.Services
             );
         }
 
-        public int GetTtlSeconds() => (int)_heartbeatTtl.TotalSeconds;
+        public int GetHeartbeatTtlSeconds() => (int)_heartbeatTtl.TotalSeconds;
 
         // Background sweep to mark expired tickets and compact queues
         public (int markedExpired, int removedTickets, int keptEntries) SweepOnce()

@@ -28,6 +28,7 @@ namespace AIRMatchmakingServer.Services
                 try
                 {
                     var (expired, removed, kept) = _service.SweepOnce();
+                    _logger.LogInformation("Matchmaking sweep completed: markedExpired={MarkedExpired}, removedTickets={RemovedTickets}", expired, removed);
                     _logger.LogTrace("Swept queues: expired={Expired}, removedTickets={Removed}, keptEntries={Kept}", expired, removed, kept);
                 }
                 catch (Exception ex)
@@ -49,4 +50,3 @@ namespace AIRMatchmakingServer.Services
         }
     }
 }
-

@@ -1,45 +1,39 @@
 # AIRMatchmakingServer
 
-This is the **region-based matchmaking server** for **Alpha Instinct Royale**, responsible for managing player matchmaking queues and returning game instance URLs once a match is full.
-
-Each game consists of 8, 32, or 100 players. Once enough players are queued, this server returns a **simulated game server URL** (real container orchestration coming later).
+This is the **region-based matchmaking server** for **Alpha Instinct Royale**, responsible for managing player queues and returning a simulated game instance URL once a lobby is full. Lobby sizes are currently 8, 32, or 100 players.
 
 ---
 
-## 🔧 Tech Stack
+## Tech Stack
 
-- **ASP.NET Core Web API** (.NET 8)
+- **ASP.NET Core + SignalR** (.NET 8)
 - C#
-- JSON over HTTP
-- Unity client integration via `UnityWebRequest`
+- JSON payloads over WebSockets (SignalR handles HTTP negotiation internally)
+- Unity client integration via `Microsoft.AspNetCore.SignalR.Client`
 
 ---
 
-## 🚀 Running Locally
+## Running Locally
 
 ### Prerequisites
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/en-us/download)
 
-### 1. Trust HTTPS (if running locally for the first time)
+### 1. Trust HTTPS (first run only)
 
 ```bash
 dotnet dev-certs https --trust
 ```
 
-This sets up a development SSL certificate so HTTPS endpoints work without browser warnings.
-
----
+SignalR still negotiates over HTTPS, so trusting the dev cert avoids browser / Unity warnings.
 
 ### 2. Run the server
-
-From the project root:
 
 ```bash
 dotnet run
 ```
 
-You should see something like this in the terminal:
+You should see logs similar to:
 
 ```text
 info: Microsoft.Hosting.Lifetime[14]
@@ -48,101 +42,91 @@ Now listening on: http://localhost:5163
 Application started. Press Ctrl+C to shut down.
 ```
 
-The port numbers may vary — both `https://localhost:7084` and `http://localhost:5163` are valid.
+### 3. Connect through SignalR
 
----
-
-### 3. Test the API
-
-You can use curl or Postman to hit the matchmaking endpoint:
-
-```bash
-curl -X POST https://localhost:7084/matchmaking/join -k \
-  -H "Content-Type: application/json" \
-  -d '{ "PlayerId": "Player_1234", "MMR": 1200 }'
-```
-
-Expected response:
-
-```json
-{
-  "message": "Waiting for match..."
-}
-```
-
-Once enough players (e.g. 32) are queued, the server returns:
-
-```json
-{
-  "message": "Match created!",
-  "gameUrl": "https://game-instance-ab12cd34.alpha.com",
-  "players": [ "Player_1234", ... ]
-}
-```
-
----
-
-## 📦 Project Structure
-
-```text
-Constants/            // Constant values for reuse
-Controllers/          // Web API endpoints
-Services/             // Match queue logic
-Plugins/              // BattleSim Library with Request/Response payloads
-Utils/                // General utility functions
-Program.cs            // Server entry point
-```
-
----
-
-## 🧪 In Unity
-
-Use `UnityWebRequest` from your Unity client to hit the `/matchmaking/join` endpoint when the player clicks "Start Matchmaking."
-
-For local development, use a `CertificateHandler` to bypass dev cert issues:
+All matchmaking now happens exclusively through the SignalR hub at `/Matchmaking`. Example console client:
 
 ```csharp
-request.certificateHandler = new BypassCertificate(); // Only for dev
+var connection = new HubConnectionBuilder()
+    .WithUrl("https://localhost:7084/Matchmaking")
+    .WithAutomaticReconnect()
+    .Build();
+
+connection.On<object>("Queued", payload => Console.WriteLine($"Queued: {JsonSerializer.Serialize(payload)}"));
+connection.On<object>("MatchOffer", payload => Console.WriteLine($"MatchOffer: {JsonSerializer.Serialize(payload)}"));
+
+await connection.StartAsync();
+await connection.InvokeAsync("Identify", "cPlayer_1234");
+await connection.InvokeAsync("JoinQueue", new PlayerJoinRequest
+{
+    PlayerId = "Player_1234",
+    QueueType = QueueType.Casual,
+    LobbySize = LobbySize.Medium,
+    MMR = 1200
+});
+```
+
+The server will send `Queued` updates while you wait, `MatchOffer` when a lobby is ready, and you can call `Heartbeat(ticketId)` / `Leave(ticketId)` on the hub to keep a ticket active or exit the queue.
+
+---
+
+## SignalR Flow
+
+- **Identify**: Bind a `playerId` to the current SignalR connection. This allows multiple tabs/devices to receive events.
+- **JoinQueue(PlayerJoinRequest)**: Enqueue the player or, if `botFill` / `botCount` is set, immediately respond with a bot-filled lobby via `MatchOffer`.
+- **Queued event**: Contains `ticketId` and `ttlSeconds`; store the ticket so you can heartbeat.
+- **MatchOffer event**: Includes the generated `gameUrl`, participating player IDs, and a shared `ticketId` for the lobby.
+- **Heartbeat(ticketId)**: Keeps the queue entry alive (call roughly every `ttlSeconds/2` seconds).
+- **Leave(ticketId)**: Cancels the queue entry.
+
+---
+
+## Project Structure
+
+```text
+Constants/            // Constant values (lobby limits, etc.)
+Game/                 // Match session abstractions
+Hubs/                 // SignalR hubs (MatchmakingHub)
+Options/              // Configuration objects
+Services/             // Queue logic + connection tracking
+Utils/                // Shared helpers (validation, lobby math)
+Program.cs            // Server entry point + DI wiring
 ```
 
 ---
 
-## 🛠️ Planned Features
+## Unity Integration
 
-- Real match server instance spawning (via Docker/Kubernetes)
-- Matchmaking by MMR tiers
-- Redis or SQL match tracking
-- Authentication / player tokens
+Use the official SignalR .NET client (`Microsoft.AspNetCore.SignalR.Client`) from Unity:
+
+1. Build a `HubConnection` pointing to `https://<server>/Matchmaking`.
+2. After `StartAsync`, immediately call `Identify(playerId)`.
+3. Register listeners for `Queued` and `MatchOffer` using `connection.On<T>()`.
+4. Invoke `JoinQueue` with a serialized `PlayerJoinRequest` when the player clicks "Start Matchmaking".
+5. Store the returned `ticketId` from the `Queued` event and call `Heartbeat` periodically until a match arrives or the player cancels with `Leave`.
+
+This removes all HTTP-specific plumbing - SignalR handles negotiation, transport fallbacks, and reconnects for you.
 
 ---
 
-## 🤖 Bot-Filled Matches
+## Bot-Filled Matches
 
-The join request supports two optional fields to request bots:
+`JoinQueue` supports optional bot parameters:
 
-- `botFill` (bool): if true, immediately creates a solo match filled with bots up to lobby capacity.
-- `botCount` (int): explicit number of bots to add (0..capacity-1). If provided and > 0, it takes precedence over `botFill`.
+- `botFill` (bool): fill the entire lobby with bots except the requesting player. Great for solo practice.
+- `botCount` (int): explicit number of bots to add (0..capacity-1). Takes precedence over `botFill` when > 0.
 
 Notes:
-- Do not set both `botFill` and a positive `botCount` — the API will reject the request.
-- Capacity depends on `lobbySize` (Small=8, Medium=32, Large=100).
 
-Examples
+- Do **not** set both `botFill` and a positive `botCount` - the request will be rejected.
+- Lobby capacity depends on `lobbySize` (Small=8, Medium=32, Large=100).
+- Immediate bot matches send `MatchOffer` right away with a generated `gameUrl`, the `players` list (including synthetic `BOT_xxxxx` IDs), and `botCount`.
 
-- Solo vs bots (fill lobby):
+---
 
-```bash
-curl -X POST https://localhost:7084/matchmaking/join -k \
-  -H "Content-Type: application/json" \
-  -d '{ "PlayerId": "Player1", "QueueType": "Casual", "LobbySize": "Small", "BotFill": true }'
-```
+## Planned Features
 
-- Solo with N bots:
-
-```bash
-curl -X POST https://localhost:7084/matchmaking/join -k \
-  -H "Content-Type: application/json" \
-  -d '{ "PlayerId": "Player1", "QueueType": "Casual", "LobbySize": "Small", "BotCount": 3 }'
-```
-
-Response includes the generated `gameUrl`, the `players` list (with synthetic `BOT_XXXXX` IDs), and `botCount` when bots are used.
+- Real match server instance spawning (Docker/Kubernetes)
+- MMR-based queue bucketing
+- Redis or SQL match tracking
+- Authentication / player tokens

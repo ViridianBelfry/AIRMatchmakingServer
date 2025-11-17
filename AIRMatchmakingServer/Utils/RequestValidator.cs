@@ -1,19 +1,17 @@
-using Microsoft.AspNetCore.Mvc;
-
 namespace AIRMatchmakingServer.Utils
 {
     public static class RequestValidator
     {
-        public static IActionResult? ValidateJoinRequest(PlayerJoinRequest request)
+        public static string? ValidateJoinRequest(PlayerJoinRequest request)
         {
             if (request == null)
             {
-                return new BadRequestObjectResult("Request body is required.");
+                return "Request body is required.";
             }
 
             if (string.IsNullOrWhiteSpace(request.PlayerId))
             {
-                return new BadRequestObjectResult("playerId is required.");
+                return "playerId is required.";
             }
 
             var sizeError = ValidateLobbySize(request.LobbySize);
@@ -28,45 +26,45 @@ namespace AIRMatchmakingServer.Utils
             return null;
         }
 
-        public static IActionResult? ValidateLobbySize(LobbySize size)
+        public static string? ValidateLobbySize(LobbySize size)
         {
             if (!Enum.IsDefined(typeof(LobbySize), size))
             {
-                return new BadRequestObjectResult($"Invalid lobby size. Must be Small ({LobbySizeUtils.ToPlayerCount(LobbySize.Small)}), Medium ({LobbySizeUtils.ToPlayerCount(LobbySize.Medium)}), or Large ({LobbySizeUtils.ToPlayerCount(LobbySize.Large)}).");
+                return $"Invalid lobby size. Must be Small ({LobbySizeUtils.ToPlayerCount(LobbySize.Small)}), Medium ({LobbySizeUtils.ToPlayerCount(LobbySize.Medium)}), or Large ({LobbySizeUtils.ToPlayerCount(LobbySize.Large)}).";
             }
 
             return null;
         }
 
-        public static IActionResult? ValidateRankedLobbyConstraint(QueueType queue, LobbySize size)
+        public static string? ValidateRankedLobbyConstraint(QueueType queue, LobbySize size)
         {
             if (queue == QueueType.Ranked && size == LobbySize.Large)
             {
-                return new BadRequestObjectResult($"Ranked queues only support Small ({LobbySizeUtils.ToPlayerCount(LobbySize.Small)}) or Medium ({LobbySizeUtils.ToPlayerCount(LobbySize.Medium)}) lobbies.");
+                return $"Ranked queues only support Small ({LobbySizeUtils.ToPlayerCount(LobbySize.Small)}) or Medium ({LobbySizeUtils.ToPlayerCount(LobbySize.Medium)}) lobbies.";
             }
 
             return null;
         }
 
-        public static IActionResult? ValidateBotRequest(PlayerJoinRequest request)
+        public static string? ValidateBotRequest(PlayerJoinRequest request)
         {
             // Do not allow both BotFill and BotCount simultaneously to keep semantics simple
             if (request.BotFill && request.BotCount.HasValue && request.BotCount.Value > 0)
             {
-                return new BadRequestObjectResult("Specify either botFill or botCount, not both.");
+                return "Specify either botFill or botCount, not both.";
             }
 
             if (request.BotCount.HasValue)
             {
                 if (request.BotCount.Value < 0)
                 {
-                    return new BadRequestObjectResult("botCount must be >= 0.");
+                    return "botCount must be >= 0.";
                 }
 
                 var capacity = LobbySizeUtils.ToPlayerCount(request.LobbySize);
                 if (request.BotCount.Value >= capacity)
                 {
-                    return new BadRequestObjectResult($"botCount must be less than lobby capacity ({capacity}).");
+                    return $"botCount must be less than lobby capacity ({capacity}).";
                 }
             }
 
